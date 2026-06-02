@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Conference Room Scheduler</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --primary: #2563eb; --primary-hover: #1d4ed8; --danger: #ef4444; --danger-hover: #dc2626;
+      --bg: #f8fafc; --card: #ffffff; --text: #0f172a; --text-light: #64748b; --border: #cbd5e1;
+      --success: #16a34a; --input-h: 48px; --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.4; padding: 1rem; touch-action: manipulation; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    h1 { margin-bottom: 1rem; font-size: 1.5rem; text-align: center; }
+    .grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 1rem; }
+    .card { background: var(--card); padding: 1.25rem; border-radius: var(--radius); box-shadow: 0 4px 8px -2px rgba(0,0,0,0.08); border: 1px solid var(--border); }
+    h2 { margin-bottom: 0.5rem; font-size: 1.1rem; }
+    .room-info { background: #eff6ff; border: 1px solid #93c5fd; padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; font-weight: 500; color: #1e40af; text-align: center; }
+    form label { display: block; margin: 0.6rem 0 0.25rem; font-weight: 500; font-size: 0.9rem; color: var(--text-light); }
+    form input { width: 100%; height: var(--input-h); padding: 0 0.75rem; border: 1px solid var(--border); border-radius: 8px; font-size: 16px; background: #fff; }
+    form input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
+    .time-row { display: flex; gap: 0.5rem; }
+    .time-row > div { flex: 1; }
+    button[type="submit"], .btn-action { margin-top: 1rem; width: 100%; height: var(--input-h); background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 1rem; cursor: pointer; }
+    button[type="submit"]:active, .btn-action:active { transform: scale(0.98); }
+    .btn-danger { background: var(--danger); }
+    .btn-danger:active { background: var(--danger-hover); }
+    .btn-admin { background: #64748b; height: 40px; font-size: 0.85rem; padding: 0 0.75rem; margin-top: 0; }
+    #message { margin-top: 0.75rem; font-size: 0.9rem; min-height: 1.2rem; text-align: center; font-weight: 500; }
+    #message.success { color: var(--success); }
+    #message.error { color: var(--danger); }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 500px; }
+    th, td { padding: 0.85rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: #f1f5f9; font-weight: 600; position: sticky; top: 0; }
+    tr:last-child td { border-bottom: none; }
+    .badge { background: #e2e8f0; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+    .meta { font-size: 0.8rem; color: var(--text-light); margin-top: 0.2rem; }
+    .auth-box { max-width: 400px; margin: 4rem auto; text-align: center; }
+    .hidden { display: none !important; }
+    #pinModal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    #pinModal .card { max-width: 320px; width: 90%; text-align: center; }
+    #pinInput { text-align: center; letter-spacing: 10px; font-size: 28px; margin: 1rem 0; }
+    #pinModal .meta { margin-bottom: 1rem; }
+    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="authScreen" class="auth-box card">
+  <h1>🏢 Conference Room Scheduler</h1>
+  <h2>🔐 Sign In to Book</h2>
+  <form id="authForm">
+    <label for="email">Email</label>
+    <input type="email" id="email" placeholder="you@company.com" required>
+    <label for="password">Password</label>
+    <input type="password" id="password" placeholder="Enter password" required>
+    <button type="submit" class="btn-action">Continue</button>
+  </form>
+  <p id="authMessage" class="meta"></p>
+  <p style="margin-top:1rem; font-size:0.85rem;">
+    <a href="#" onclick="showResetForm()" style="color:var(--primary); text-decoration:none;">Forgot password?</a>
+  </p>
+</div>
+
+<!-- Reset Password Form (Hidden by default) -->
+<div id="resetScreen" class="auth-box card hidden">
+  <h1>🔑 Reset Password</h1>
+  <p class="meta">Enter your email to receive a reset link</p>
+  <form id="resetForm">
+    <label for="resetEmail">Email</label>
+    <input type="email" id="resetEmail" placeholder="you@company.com" required>
+    <button type="submit" class="btn-action">Send Reset Link</button>
+  </form>
+  <p id="resetMessage" class="meta"></p>
+  <p style="margin-top:1rem; font-size:0.85rem;">
+    <a href="#" onclick="showLoginForm()" style="color:var(--primary); text-decoration:none;">Back to login</a>
+  </p>
+</div>
+
+    <div id="appScreen" class="hidden">
+      <h1>🏢 Conference Room Scheduler <span id="userBadge" class="badge" style="float:right; margin-top:0.2rem;"></span></h1>
+      <div class="grid">
+        <div class="card">
+          <h2>📝 Book a Session</h2>
+          <div class="room-info">📍 Main Conference Room (Max 10 seats)</div>
+          <form id="bookingForm" autocomplete="off">
+            <label for="date">Date</label>
+            <input type="date" id="date" required>
+            <div class="time-row">
+              <div><label for="start">Start Time</label><input type="time" id="start" required></div>
+              <div><label for="end">End Time</label><input type="time" id="end" required></div>
+            </div>
+            <label for="title">Session Title</label>
+            <input type="text" id="title" placeholder="e.g., Product Review" required>
+            <label for="attendees">Attendees (1-10)</label>
+            <input type="number" id="attendees" min="1" max="10" step="1" inputmode="numeric" required placeholder="Number of people">
+            <button type="submit">Confirm Booking</button>
+            <p id="message"></p>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>📅 All Bookings</h2>
+          <div class="table-wrap">
+            <table id="bookingsTable">
+              <thead><tr><th>Date</th><th>Time</th><th>Title</th><th>People</th><th>Booked By</th><th>Action</th></tr></thead>
+              <tbody id="bookingsBody"></tbody>
+            </table>
+          </div>
+          <p id="emptyState" style="text-align:center; color:var(--text-light); padding:2rem; display:none;">No upcoming bookings.</p>
+          <button id="logoutBtn" class="btn-action btn-danger" style="margin-top:1rem;">Sign Out</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="pinModal" class="hidden">
+    <div class="card">
+      <h2>🔑 Admin PIN</h2>
+      <p class="meta">Required to cancel another user's booking</p>
+      <input type="password" id="pinInput" inputmode="numeric" maxlength="4" placeholder="••••">
+      <button id="pinSubmit" class="btn-action">Verify & Cancel</button>
+      <button id="pinCancel" class="btn-action" style="background:#64748b; margin-top:0.5rem;">Cancel</button>
+      <p id="pinMessage" style="margin-top:0.5rem; font-size:0.85rem;"></p>
+    </div>
+  </div>
+
+  <script>
+    // 🔑 YOUR SUPABASE CREDENTIALS
+    const SUPABASE_URL = 'https://dgojyhymwkkabzpewzod.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_-49PoxDK-c7ayITOeUBcIA_NhsDO-JV';
+    
+    let supabaseClient;
+    let currentUser = null;
+    let pendingCancelId = null;
+
+    // Initialize Supabase
+    try {
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      console.log('✅ Supabase client initialized');
+    } catch (err) {
+      console.error('❌ Failed to initialize Supabase:', err);
+      showAuthMessage('Configuration error. Check console.', 'error');
+    }
+
+    // Auth Form
+    document.getElementById('authForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      
+      if (!email || !password) {
+        return showAuthMessage('Please enter email and password', 'error');
+      }
+
+      showAuthMessage('Signing in...', 'success');
+      console.log('🔐 Attempting auth for:', email);
+
+      try {
+        // Try sign in first
+        let { data, error } = await supabaseClient.auth.signInWithPassword({ 
+          email, 
+          password 
+        });
+        
+        console.log(' signInWithPassword result:', { data, error });
+
+        // If login fails due to invalid credentials, try sign up
+        if (error && error.message.includes('Invalid')) {
+          console.log('🔐 Trying signUp instead...');
+          showAuthMessage('Creating new account...', 'success');
+          ({ data, error } = await supabaseClient.auth.signUp({ 
+            email, 
+            password 
+          }));
+          console.log('🔐 signUp result:', { data, error });
+        }
+        
+        if (error) {
+          console.error('❌ Auth error:', error);
+          return showAuthMessage(`Error: ${error.message}`, 'error');
+        }
+        
+        if (data?.user) {
+          console.log('✅ Auth success! User:', data.user.email);
+          handleAuthSuccess(data.user);
+        } else {
+          console.warn('⚠️ No user returned from auth');
+          showAuthMessage('Authentication failed - no user data', 'error');
+        }
+      } catch (err) {
+        console.error('💥 Auth exception:', err);
+        showAuthMessage('Connection error. Check internet or console.', 'error');
+      }
+    });
+
+    async function handleAuthSuccess(user) {
+      console.log('🚀 handleAuthSuccess called for:', user.email);
+      currentUser = user;
+      
+      // Hide auth screen, show app
+      document.getElementById('authScreen').classList.add('hidden');
+      document.getElementById('appScreen').classList.remove('hidden');
+      document.getElementById('userBadge').textContent = user.email;
+      document.getElementById('date').value = new Date().toISOString().split('T')[0];
+      
+      console.log('📅 Loading all bookings...');
+      await loadBookings();
+      console.log('✅ App ready!');
+    }
+
+    async function loadBookings() {
+      try {
+        // Load ALL bookings (not just current user's)
+        const { data, error } = await supabaseClient.from('bookings')
+          .select('*')
+          .order('date', { ascending: true })
+          .order('start_time', { ascending: true });
+          
+        if (error) {
+          console.error('❌ Load bookings error:', error);
+          return showMessage('Failed to load bookings: ' + error.message, 'error');
+        }
+        console.log('📊 Loaded', data?.length || 0, 'bookings');
+        renderTable(data || []);
+      } catch (err) {
+        console.error('💥 Load bookings exception:', err);
+        showMessage('Connection error while loading bookings', 'error');
+      }
+    }
+
+    function renderTable(bookings) {
+      const tbody = document.getElementById('bookingsBody');
+      tbody.innerHTML = '';
+      const empty = document.getElementById('emptyState');
+      if (bookings.length === 0) { 
+        empty.style.display = 'block'; 
+        return; 
+      }
+      empty.style.display = 'none';
+
+      bookings.forEach(b => {
+        const isOwner = b.user_id === currentUser.id;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${formatDate(b.date)}</td>
+          <td>${b.start_time} - ${b.end_time}</td>
+          <td>${escapeHtml(b.title)}</td>
+          <td><span class="badge">👥 ${b.attendees}</span></td>
+          <td>${isOwner ? '<span class="badge" style="background:#dcfce7;color:#166534;">You</span>' : escapeHtml(getUserEmailById(b.user_id))}</td>
+          <td>${isOwner ? `<button class="btn-action btn-danger cancel-btn" style="margin-top:0; height:40px; padding:0 0.75rem; font-size:0.85rem;" data-id="${b.id}" data-pin="">Cancel</button>` : `<button class="btn-action btn-admin cancel-btn" data-id="${b.id}" data-pin="required">🔑 Admin</button>`}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Helper: Get email by user ID (for display only)
+    function getUserEmailById(userId) {
+      // In real app, you'd fetch this from auth.users or cache it
+      // For now, show "Other User" since we don't have direct access to other users' emails via anon key
+      return 'Other User';
+    }
+
+    document.getElementById('bookingForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      showMessage('', '');
+      const date = document.getElementById('date').value;
+      const start = document.getElementById('start').value;
+      const end = document.getElementById('end').value;
+      const title = document.getElementById('title').value.trim();
+      const attendees = parseInt(document.getElementById('attendees').value);
+
+      if (start >= end) return showMessage('End time must be after start.', 'error');
+      if (new Date(date) < new Date().setHours(0,0,0,0)) return showMessage('Date cannot be in the past.', 'error');
+      if (isNaN(attendees) || attendees < 1 || attendees > 10) return showMessage('Max 10 attendees allowed.', 'error');
+
+      const { data: overlaps } = await supabaseClient.from('bookings').select('id').eq('date', date).not('start_time', 'gte', end).not('end_time', 'lte', start);
+      if (overlaps?.length) return showMessage('⛔ Slot already booked.', 'error');
+
+      const { error } = await supabaseClient.from('bookings').insert([{ 
+        user_id: currentUser.id, 
+        room: 'Main Conference Room',
+        date, 
+        start_time: start, 
+        end_time: end, 
+        title, 
+        attendees 
+      }]);
+      
+      if (error) {
+        console.error('❌ Insert booking error:', error);
+        return showMessage(`Booking failed: ${error.message}`, 'error');
+      }
+      showMessage('✅ Booked successfully!', 'success');
+      e.target.reset();
+      document.getElementById('date').value = new Date().toISOString().split('T')[0];
+      await loadBookings();
+    });
+
+    document.getElementById('bookingsBody').addEventListener('click', async (e) => {
+      if (e.target.classList.contains('cancel-btn')) {
+        pendingCancelId = e.target.dataset.id;
+        const requiresPin = e.target.dataset.pin === 'required';
+        if (!requiresPin) {
+          if (confirm('Cancel this booking?')) await executeCancel('');
+        } else {
+          showPinModal();
+        }
+      }
+    });
+
+    function showPinModal() {
+      document.getElementById('pinModal').classList.remove('hidden');
+      document.getElementById('pinInput').value = '';
+      document.getElementById('pinInput').focus();
+      document.getElementById('pinMessage').textContent = '';
+    }
+    document.getElementById('pinCancel').onclick = () => document.getElementById('pinModal').classList.add('hidden');
+    document.getElementById('pinSubmit').onclick = async () => {
+      const pin = document.getElementById('pinInput').value.trim();
+      if (pin.length !== 4) return showPinMsg('Enter 4 digits', 'error');
+      document.getElementById('pinSubmit').disabled = true;
+      await executeCancel(pin);
+      document.getElementById('pinSubmit').disabled = false;
+    };
+    function showPinMsg(msg, type) { 
+      document.getElementById('pinMessage').textContent = msg; 
+      document.getElementById('pinMessage').style.color = type === 'error' ? 'var(--danger)' : 'var(--success)'; 
+    }
+
+    async function executeCancel(pin) {
+      showMessage('Processing...', '');
+      const { data, error } = await supabaseClient.rpc('cancel_booking_with_auth', { 
+        p_booking_id: pendingCancelId, 
+        p_pin: pin 
+      });
+      if (error || data?.error) return showMessage(data?.error || error.message, 'error');
+      if (data.is_admin) showMessage('✅ Admin override logged.', 'success');
+      else showMessage('✅ Booking cancelled.', 'success');
+      document.getElementById('pinModal').classList.add('hidden');
+      await loadBookings();
+    }
+
+    document.getElementById('logoutBtn').addEventListener('click', async () => { 
+      console.log('🚪 Logging out...');
+      await supabaseClient.auth.signOut(); 
+      location.reload(); 
+    });
+
+    function showAuthMessage(msg, type) { 
+      const el = document.getElementById('authMessage'); 
+      el.textContent = msg; 
+      el.className = type === 'error' ? 'meta' : 'meta success';
+      el.style.color = type === 'error' ? 'var(--danger)' : 'var(--success)';
+    }
+    function showMessage(msg, type) { 
+      const el = document.getElementById('message'); 
+      el.textContent = msg; 
+      el.className = type; 
+      setTimeout(() => { el.textContent = ''; el.className = ''; }, 3500); 
+    }
+    function formatDate(d) { return d.split('-').slice(1).reverse().join('/'); }
+    function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+    // Auto-login check on page load
+    (async () => { 
+      try {
+        console.log('🔄 Checking existing session...');
+        const { data } = await supabaseClient.auth.getSession(); 
+        if (data?.session?.user) {
+          console.log('✅ Existing session found:', data.session.user.email);
+          handleAuthSuccess(data.session.user);
+        } else {
+          console.log('ℹ️ No existing session');
+        }
+      } catch (err) {
+        console.error('💥 Session check failed:', err);
+      }
+    })();
+// ===== PASSWORD RESET FUNCTIONS =====
+
+// Show Reset Form, Hide Login Form
+function showResetForm() {
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('resetScreen').classList.remove('hidden');
+  document.getElementById('authMessage').textContent = ''; // Clear any old messages
+}
+
+// Show Login Form, Hide Reset Form
+function showLoginForm() {
+  document.getElementById('resetScreen').classList.add('hidden');
+  document.getElementById('authScreen').classList.remove('hidden');
+  document.getElementById('resetMessage').textContent = ''; // Clear reset message
+}
+
+// Handle Password Reset Submission
+document.getElementById('resetForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('resetEmail').value.trim();
+  const msgEl = document.getElementById('resetMessage');
+
+  if (!email) {
+    msgEl.textContent = 'Please enter your email';
+    msgEl.style.color = 'var(--danger)';
+    return;
+  }
+
+  msgEl.textContent = 'Sending reset link...';
+  msgEl.style.color = 'var(--text-light)';
+
+  try {
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin // Redirects back to your app after clicking link
+    });
+
+    if (error) throw error;
+
+    msgEl.textContent = '✅ Check your email for reset link!';
+    msgEl.style.color = 'var(--success)';
+  } catch (err) {
+    console.error('Reset error:', err);
+    msgEl.textContent = '❌ Error: ' + err.message;
+    msgEl.style.color = 'var(--danger)';
+  }
+});
+  </script>
+</body>
+</html>
