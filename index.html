@@ -29,6 +29,7 @@
     .btn-danger { background: var(--danger); }
     .btn-danger:active { background: var(--danger-hover); }
     .btn-admin { background: #64748b; height: 40px; font-size: 0.85rem; padding: 0 0.75rem; margin-top: 0; }
+    .btn-export { background: #059669; height: 40px; font-size: 0.85rem; padding: 0 0.75rem; margin-top: 0.5rem; }
     #message { margin-top: 0.75rem; font-size: 0.9rem; min-height: 1.2rem; text-align: center; font-weight: 500; }
     #message.success { color: var(--success); }
     #message.error { color: var(--danger); }
@@ -51,42 +52,41 @@
 <body>
   <div class="container">
     <div id="authScreen" class="auth-box card">
-  <h1>🏢 Conference Room Scheduler</h1>
-  <h2>🔐 Sign In to Book</h2>
-  <form id="authForm">
-    <label for="email">Email</label>
-    <input type="email" id="email" placeholder="you@company.com" required>
-    <label for="password">Password</label>
-    <input type="password" id="password" placeholder="Enter password" required>
-    <button type="submit" class="btn-action">Continue</button>
-  </form>
-  <p id="authMessage" class="meta"></p>
-  <p style="margin-top:1rem; font-size:0.85rem;">
-    <a href="#" onclick="showResetForm()" style="color:var(--primary); text-decoration:none;">Forgot password?</a>
-  </p>
-</div>
+      <h1>🏢 Conference Room Scheduler</h1>
+      <h2>🔐 Sign In to Book</h2>
+      <form id="authForm">
+        <label for="email">Email</label>
+        <input type="email" id="email" placeholder="you@company.com" required>
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Enter password" required>
+        <button type="submit" class="btn-action">Continue</button>
+      </form>
+      <p id="authMessage" class="meta"></p>
+      <p style="margin-top:1rem; font-size:0.85rem;">
+        <a href="#" onclick="showResetForm()" style="color:var(--primary); text-decoration:none;">Forgot password?</a>
+      </p>
+    </div>
 
-<!-- Reset Password Form (Hidden by default) -->
-<div id="resetScreen" class="auth-box card hidden">
-  <h1>🔑 Reset Password</h1>
-  <p class="meta">Enter your email to receive a reset link</p>
-  <form id="resetForm">
-    <label for="resetEmail">Email</label>
-    <input type="email" id="resetEmail" placeholder="you@company.com" required>
-    <button type="submit" class="btn-action">Send Reset Link</button>
-  </form>
-  <p id="resetMessage" class="meta"></p>
-  <p style="margin-top:1rem; font-size:0.85rem;">
-    <a href="#" onclick="showLoginForm()" style="color:var(--primary); text-decoration:none;">Back to login</a>
-  </p>
-</div>
+    <div id="resetScreen" class="auth-box card hidden">
+      <h1>🔑 Reset Password</h1>
+      <p class="meta">Enter your email to receive a reset link</p>
+      <form id="resetForm">
+        <label for="resetEmail">Email</label>
+        <input type="email" id="resetEmail" placeholder="you@company.com" required>
+        <button type="submit" class="btn-action">Send Reset Link</button>
+      </form>
+      <p id="resetMessage" class="meta"></p>
+      <p style="margin-top:1rem; font-size:0.85rem;">
+        <a href="#" onclick="showLoginForm()" style="color:var(--primary); text-decoration:none;">Back to login</a>
+      </p>
+    </div>
 
     <div id="appScreen" class="hidden">
       <h1>🏢 Conference Room Scheduler <span id="userBadge" class="badge" style="float:right; margin-top:0.2rem;"></span></h1>
       <div class="grid">
         <div class="card">
           <h2>📝 Book a Session</h2>
-          <div class="room-info">📍 Main Conference Room (Max 10 seats)</div>
+          <div class="room-info"> Main Conference Room (Max 10 seats)</div>
           <form id="bookingForm" autocomplete="off">
             <label for="date">Date</label>
             <input type="date" id="date" required>
@@ -104,7 +104,7 @@
         </div>
 
         <div class="card">
-          <h2>📅 All Bookings</h2>
+          <h2> All Bookings (Latest First)</h2>
           <div class="table-wrap">
             <table id="bookingsTable">
               <thead><tr><th>Date</th><th>Time</th><th>Title</th><th>People</th><th>Booked By</th><th>Action</th></tr></thead>
@@ -112,6 +112,10 @@
             </table>
           </div>
           <p id="emptyState" style="text-align:center; color:var(--text-light); padding:2rem; display:none;">No upcoming bookings.</p>
+          
+          <!-- Admin Export Button -->
+          <button id="exportBtn" class="btn-action btn-export" onclick="exportExpiredBookings()">📥 Export Expired Bookings (CSV)</button>
+          
           <button id="logoutBtn" class="btn-action btn-danger" style="margin-top:1rem;">Sign Out</button>
         </div>
       </div>
@@ -161,23 +165,10 @@
       console.log('🔐 Attempting auth for:', email);
 
       try {
-        // Try sign in first
-        let { data, error } = await supabaseClient.auth.signInWithPassword({ 
-          email, 
-          password 
-        });
-        
-        console.log(' signInWithPassword result:', { data, error });
-
-        // If login fails due to invalid credentials, try sign up
+        let { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
         if (error && error.message.includes('Invalid')) {
-          console.log('🔐 Trying signUp instead...');
           showAuthMessage('Creating new account...', 'success');
-          ({ data, error } = await supabaseClient.auth.signUp({ 
-            email, 
-            password 
-          }));
-          console.log('🔐 signUp result:', { data, error });
+          ({ data, error } = await supabaseClient.auth.signUp({ email, password }));
         }
         
         if (error) {
@@ -189,43 +180,40 @@
           console.log('✅ Auth success! User:', data.user.email);
           handleAuthSuccess(data.user);
         } else {
-          console.warn('⚠️ No user returned from auth');
           showAuthMessage('Authentication failed - no user data', 'error');
         }
       } catch (err) {
-        console.error('💥 Auth exception:', err);
+        console.error(' Auth exception:', err);
         showAuthMessage('Connection error. Check internet or console.', 'error');
       }
     });
 
     async function handleAuthSuccess(user) {
-      console.log('🚀 handleAuthSuccess called for:', user.email);
+      console.log(' handleAuthSuccess called for:', user.email);
       currentUser = user;
-      
-      // Hide auth screen, show app
       document.getElementById('authScreen').classList.add('hidden');
       document.getElementById('appScreen').classList.remove('hidden');
       document.getElementById('userBadge').textContent = user.email;
       document.getElementById('date').value = new Date().toISOString().split('T')[0];
-      
-      console.log('📅 Loading all bookings...');
       await loadBookings();
       console.log('✅ App ready!');
     }
 
+    // Load ALL bookings, sorted by date DESC (latest first)
     async function loadBookings() {
       try {
-        // Load ALL bookings (not just current user's)
+        const today = new Date().toISOString().split('T')[0];
         const { data, error } = await supabaseClient.from('bookings')
           .select('*')
-          .order('date', { ascending: true })
-          .order('start_time', { ascending: true });
+          .gte('date', today) // Only future/upcoming bookings
+          .order('date', { ascending: false }) // Latest date first
+          .order('start_time', { ascending: true }); // Then earliest time within same day
           
         if (error) {
           console.error('❌ Load bookings error:', error);
           return showMessage('Failed to load bookings: ' + error.message, 'error');
         }
-        console.log('📊 Loaded', data?.length || 0, 'bookings');
+        console.log('📊 Loaded', data?.length || 0, 'upcoming bookings');
         renderTable(data || []);
       } catch (err) {
         console.error('💥 Load bookings exception:', err);
@@ -250,19 +238,12 @@
           <td>${formatDate(b.date)}</td>
           <td>${b.start_time} - ${b.end_time}</td>
           <td>${escapeHtml(b.title)}</td>
-          <td><span class="badge">👥 ${b.attendees}</span></td>
-          <td>${isOwner ? '<span class="badge" style="background:#dcfce7;color:#166534;">You</span>' : escapeHtml(getUserEmailById(b.user_id))}</td>
+          <td><span class="badge"> ${b.attendees}</span></td>
+          <td>${isOwner ? '<span class="badge" style="background:#dcfce7;color:#166534;">You</span>' : 'Other User'}</td>
           <td>${isOwner ? `<button class="btn-action btn-danger cancel-btn" style="margin-top:0; height:40px; padding:0 0.75rem; font-size:0.85rem;" data-id="${b.id}" data-pin="">Cancel</button>` : `<button class="btn-action btn-admin cancel-btn" data-id="${b.id}" data-pin="required">🔑 Admin</button>`}</td>
         `;
         tbody.appendChild(tr);
       });
-    }
-
-    // Helper: Get email by user ID (for display only)
-    function getUserEmailById(userId) {
-      // In real app, you'd fetch this from auth.users or cache it
-      // For now, show "Other User" since we don't have direct access to other users' emails via anon key
-      return 'Other User';
     }
 
     document.getElementById('bookingForm').addEventListener('submit', async (e) => {
@@ -351,6 +332,98 @@
       location.reload(); 
     });
 
+    // ===== PASSWORD RESET FUNCTIONS =====
+    function showResetForm() {
+      document.getElementById('authScreen').classList.add('hidden');
+      document.getElementById('resetScreen').classList.remove('hidden');
+      document.getElementById('authMessage').textContent = '';
+    }
+    function showLoginForm() {
+      document.getElementById('resetScreen').classList.add('hidden');
+      document.getElementById('authScreen').classList.remove('hidden');
+      document.getElementById('resetMessage').textContent = '';
+    }
+    document.getElementById('resetForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('resetEmail').value.trim();
+      const msgEl = document.getElementById('resetMessage');
+      if (!email) {
+        msgEl.textContent = 'Please enter your email';
+        msgEl.style.color = 'var(--danger)';
+        return;
+      }
+      msgEl.textContent = 'Sending reset link...';
+      msgEl.style.color = 'var(--text-light)';
+      try {
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin
+        });
+        if (error) throw error;
+        msgEl.textContent = '✅ Check your email for reset link!';
+        msgEl.style.color = 'var(--success)';
+      } catch (err) {
+        console.error('Reset error:', err);
+        msgEl.textContent = ' Error: ' + err.message;
+        msgEl.style.color = 'var(--danger)';
+      }
+    });
+
+    // ===== EXPORT EXPIRED BOOKINGS TO CSV =====
+    async function exportExpiredBookings() {
+      showMessage('Exporting expired bookings...', 'success');
+      const today = new Date().toISOString().split('T')[0];
+      
+      try {
+        const { data, error } = await supabaseClient.from('bookings')
+          .select('*')
+          .lt('date', today) // Only expired bookings
+          .order('date', { ascending: false }); // Most recent expired first
+        
+        if (error) throw error;
+        
+        if (data.length === 0) {
+          showMessage('No expired bookings found.', 'error');
+          return;
+        }
+
+        // Convert to CSV
+        const headers = ['ID', 'User ID', 'Room', 'Date', 'Start Time', 'End Time', 'Title', 'Attendees', 'Created At'];
+        const csvRows = [headers.join(',')];
+        
+        data.forEach(b => {
+          const row = [
+            b.id,
+            b.user_id,
+            `"${b.room}"`,
+            b.date,
+            b.start_time,
+            b.end_time,
+            `"${b.title.replace(/"/g, '""')}"`, // Escape quotes
+            b.attendees,
+            b.created_at
+          ];
+          csvRows.push(row.join(','));
+        });
+
+        const csvContent = csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `expired_bookings_${today}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        showMessage(`✅ Exported ${data.length} expired bookings!`, 'success');
+      } catch (err) {
+        console.error('Export error:', err);
+        showMessage('❌ Export failed: ' + err.message, 'error');
+      }
+    }
+
     function showAuthMessage(msg, type) { 
       const el = document.getElementById('authMessage'); 
       el.textContent = msg; 
@@ -381,52 +454,6 @@
         console.error('💥 Session check failed:', err);
       }
     })();
-// ===== PASSWORD RESET FUNCTIONS =====
-
-// Show Reset Form, Hide Login Form
-function showResetForm() {
-  document.getElementById('authScreen').classList.add('hidden');
-  document.getElementById('resetScreen').classList.remove('hidden');
-  document.getElementById('authMessage').textContent = ''; // Clear any old messages
-}
-
-// Show Login Form, Hide Reset Form
-function showLoginForm() {
-  document.getElementById('resetScreen').classList.add('hidden');
-  document.getElementById('authScreen').classList.remove('hidden');
-  document.getElementById('resetMessage').textContent = ''; // Clear reset message
-}
-
-// Handle Password Reset Submission
-document.getElementById('resetForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const email = document.getElementById('resetEmail').value.trim();
-  const msgEl = document.getElementById('resetMessage');
-
-  if (!email) {
-    msgEl.textContent = 'Please enter your email';
-    msgEl.style.color = 'var(--danger)';
-    return;
-  }
-
-  msgEl.textContent = 'Sending reset link...';
-  msgEl.style.color = 'var(--text-light)';
-
-  try {
-    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin // Redirects back to your app after clicking link
-    });
-
-    if (error) throw error;
-
-    msgEl.textContent = '✅ Check your email for reset link!';
-    msgEl.style.color = 'var(--success)';
-  } catch (err) {
-    console.error('Reset error:', err);
-    msgEl.textContent = '❌ Error: ' + err.message;
-    msgEl.style.color = 'var(--danger)';
-  }
-});
   </script>
 </body>
 </html>
